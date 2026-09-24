@@ -1,0 +1,63 @@
+name: Autonomous YouTube Channel Production
+
+on:
+  schedule:
+    - cron: '0 10,14,22 * * *'
+    - cron: '0 12 * * 0'
+  workflow_dispatch:
+    inputs:
+      video_type:
+        description: 'Type of video to produce'
+        required: true
+        default: 'short'
+        type: choice
+        options:
+          - short
+          - long_documentary
+
+jobs:
+  produce-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install System Dependencies (ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Execute Autonomous Video Production & YouTube Upload
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          CLIENT_SECRET_JSON: ${{ secrets.CLIENT_SECRET_JSON }}
+        run: |
+          if [ -n "$CLIENT_SECRET_JSON" ]; then
+            echo "$CLIENT_SECRET_JSON" > client_secret.json
+          fi
+          if [ -n "$YOUTUBE_TOKEN_JSON" ]; then
+            echo "$YOUTUBE_TOKEN_JSON" > token.json
+          fi
+
+          DAY_OF_WEEK=$(date +%u)
+          HOUR=$(date +%H)
+
+          if [ "${{ github.event.inputs.video_type }}" = "long_documentary" ] || [ "$DAY_OF_WEEK" -eq 7 -a "$HOUR" -eq 12 ]; then
+            echo "🎬 Running Long Documentary Pipeline..."
+            python main.py --long-video --privacy public
+          else
+            echo "⚡ Running YouTube Short Pipeline..."
+            python main.py --privacy public
+          fi
